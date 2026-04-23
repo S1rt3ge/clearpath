@@ -2,11 +2,13 @@ import asyncio
 import logging
 import sys
 import httpx
+from datetime import datetime, timezone
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from sqlalchemy import delete
 
-from app.database import init_db
+from app.database import init_db, AsyncSessionLocal
 from app.routers import analyze, profiles
 from app.config import settings
 
@@ -47,11 +49,38 @@ async def _warmup_ollama() -> None:
         _logger.warning(f"Ollama warm-up skipped (Ollama not ready?): {e}")
 
 
+async def _cleanup_cache_loop() -> None:
+    """Delete expired AnalysisCache rows every 10 minutes.
+
+    Runs as a background task for the lifetime of the process.
+    Fails silently so it never crashes the application.
+    """
+    # Import here to avoid circular import at module level
+    from app.models.analysis_cache import AnalysisCache
+
+    while True:
+        await asyncio.sleep(600)  # 10 minutes
+        try:
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    delete(AnalysisCache).where(
+                        AnalysisCache.expires_at < datetime.now(timezone.utc)
+                    )
+                )
+                await db.commit()
+                deleted = result.rowcount
+                if deleted:
+                    _logger.debug(f"Cache cleanup: removed {deleted} expired entries")
+        except Exception as e:
+            _logger.warning(f"Cache cleanup error: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
     # Warm up in the background — don't block application startup
     asyncio.create_task(_warmup_ollama())
+    asyncio.create_task(_cleanup_cache_loop())
     yield
 
 

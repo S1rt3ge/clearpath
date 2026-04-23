@@ -7,13 +7,13 @@ Gemma 4 with think:false outputs reasoning then <channel|> then the clean answer
 Pipeline:
   1. _clean_text()          — strip [1] citations and nav boilerplate
   2. _extract_article_text() — skip infobox fragments; keep real sentences only
-  3. Ollama call             — num_predict=640 (≈480 thinking + 160 answer tokens)
+  3. Ollama call             — num_predict=280 (think=False → answer only, no reasoning pass)
   4. _strip_thinking()       — extract text after <channel|> with fallbacks
   5. Fallback                — if still empty, return first sentences of article_text
+  6. hard_terms extraction   — words from original absent in simplified (returned as tuple)
 
-At ~14 tok/s (warm GPU, no VRAM competition) the call completes in ~40s when
-serialised with the planner.  The 90s httpx timeout leaves ample headroom even
-when another model briefly contends for VRAM.
+Returns tuple[str, list[str]]: (simplified_text, hard_terms).
+At ~14 tok/s (warm GPU) the call completes in ~18–22s.
 """
 import re
 import httpx
@@ -42,6 +42,14 @@ _THINKING_MARKERS = (
     "I need to simplify",
     "I will simplify",
     "**Analyze:",
+    "The user wants me to",
+    "My task is to",
+    "I will now",
+    "Let me break",
+    "I should simplify",
+    "To simplify this",
+    "I'll simplify",
+    "Here is the simplified",
 )
 
 
@@ -143,7 +151,7 @@ async def simplify_text(
     reading_level: str = "A2",
     language: str = "en",
     max_sentences: int = 10,
-) -> str:
+) -> tuple[str, list[str]]:
     cleaned = _clean_text(text)
     article_text = _extract_article_text(cleaned)
 
@@ -169,10 +177,10 @@ async def simplify_text(
                 ],
                 "stream": False,
                 "think": False,
-                # 640 = ~480 thinking tokens + ~160 tokens for the answer.
-                # At 14 tok/s (warm GPU)  → ~46s total
-                # At 10 tok/s (slow GPU)  → ~64s total  (within 90s timeout)
-                "options": {"temperature": 0.3, "num_predict": 640},
+                # 280 tokens with think=False → answer only, no reasoning pass.
+                # At 14 tok/s (warm GPU)  → ~18–20s total
+                # At 10 tok/s (slow GPU)  → ~28s total  (within 90s timeout)
+                "options": {"temperature": 0.3, "num_predict": 280},
             },
         )
         content = response.json().get("message", {}).get("content", "")
@@ -187,4 +195,10 @@ async def simplify_text(
             ]
             result = " ".join(sents[:4]) if sents else article_text[:300].strip()
 
-        return result
+        # Extract hard_terms: long words from original absent in simplified output.
+        # Used by the router to persist to user profile and surface in the UI.
+        original_words = set(re.findall(r'\b[A-Za-zА-Яа-я]{8,}\b', article_text))
+        simplified_words = set(re.findall(r'\b[A-Za-zА-Яа-я]{8,}\b', result))
+        hard_terms = list(original_words - simplified_words)[:10]
+
+        return result, hard_terms

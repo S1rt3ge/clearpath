@@ -26,12 +26,14 @@ class GraphState(TypedDict):
     page_analysis: Optional[dict]
     plan: Optional[dict]
     simplified_text: Optional[str]
+    hard_terms: Optional[List[str]]     # words from original absent in simplified
     transformations: Optional[List[dict]]
 
     # Final output
     response: Optional[dict]
     error: Optional[str]
     start_time: float
+    last_visit_info: Optional[dict]     # {"days_ago": int, "url": str} — set by router
 
 
 _ANALYZER_FALLBACK = {
@@ -111,11 +113,15 @@ async def planner_and_writer_node(state: GraphState) -> GraphState:
     if isinstance(writer_result, Exception):
         logger.error(f"Writer FAILED ({elapsed}s): {writer_result}")
         simplified = None
+        hard_terms: List[str] = []
     else:
-        simplified = writer_result
-        logger.info(f"Writer OK ({elapsed}s): {len(simplified or '')} chars")
+        simplified, hard_terms = writer_result
+        logger.info(
+            f"Writer OK ({elapsed}s): {len(simplified or '')} chars, "
+            f"{len(hard_terms)} hard_terms"
+        )
 
-    return {**state, "plan": plan, "simplified_text": simplified}
+    return {**state, "plan": plan, "simplified_text": simplified, "hard_terms": hard_terms}
 
 
 async def action_node(state: GraphState) -> GraphState:
@@ -134,6 +140,8 @@ async def action_node(state: GraphState) -> GraphState:
             "transformations": [t.model_dump() for t in transformations],
             "agent_message": state["plan"].get("agent_message", "Page adapted for you."),
             "processing_time_ms": elapsed_ms,
+            "hard_terms": state.get("hard_terms") or [],
+            "last_visit_info": state.get("last_visit_info"),
         }
 
         logger.info(f"Action OK: {len(response['transformations'])} transforms, {elapsed_ms}ms total")
