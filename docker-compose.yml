@@ -16,6 +16,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
   backend:
     build: ./backend
@@ -26,7 +27,9 @@ services:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       GOOGLE_AI_STUDIO_API_KEY: ${GOOGLE_AI_STUDIO_API_KEY:-}
       GEMMA_LOCAL_MODEL: ${GEMMA_LOCAL_MODEL:-gemma4:e2b-it-q4_K_M}
-      GEMMA_CLOUD_MODEL: ${GEMMA_CLOUD_MODEL:-gemma-4-26b}
+      GEMMA_CLOUD_MODEL: ${GEMMA_CLOUD_MODEL:-gemini-2.0-flash}
+      CACHE_TTL_MINUTES: ${CACHE_TTL_MINUTES:-5}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     depends_on:
       postgres:
         condition: service_healthy
@@ -35,6 +38,25 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # Опциональный pgAdmin для отладки БД
+  # Запустить: docker-compose --profile debug up -d
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    profiles: ["debug"]
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@clearpath.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
 
 volumes:
   postgres_data:
