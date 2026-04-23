@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -10,6 +11,8 @@ from app.database import get_db
 from app.schemas.analyze import AnalyzeRequest, AnalyzeResponse
 from app.agents.graph import get_graph
 from app.models.user_profile import UserProfile
+
+logger = logging.getLogger("clearpath")
 
 router = APIRouter(prefix="/api/v1", tags=["analyze"])
 
@@ -81,6 +84,21 @@ async def _load_or_create_profile(
     return profile
 
 
+def _build_initial_state(request: AnalyzeRequest, profile_dict: dict) -> dict:
+    """Construct the LangGraph initial state from a validated request."""
+    return {
+        "request": request.model_dump(),
+        "user_profile": profile_dict,
+        "page_analysis": None,
+        "plan": None,
+        "simplified_text": None,
+        "transformations": None,
+        "response": None,
+        "error": None,
+        "start_time": time.time(),
+    }
+
+
 # ---------------------------------------------------------------------------
 # HTTP endpoint
 # ---------------------------------------------------------------------------
@@ -101,17 +119,7 @@ async def analyze_page(request: AnalyzeRequest, db: AsyncSession = Depends(get_d
 
     # Run agent graph
     graph = get_graph()
-    state = await graph.ainvoke({
-        "request": request.model_dump(),
-        "user_profile": profile_dict,
-        "page_analysis": None,
-        "plan": None,
-        "simplified_text": None,
-        "transformations": None,
-        "response": None,
-        "error": None,
-        "start_time": time.time(),
-    })
+    state = await graph.ainvoke(_build_initial_state(request, profile_dict))
 
     result = state["response"]
 
@@ -138,8 +146,12 @@ async def analyze_websocket(websocket: WebSocket, db: AsyncSession = Depends(get
     try:
         while True:
             data = await websocket.receive_text()
-            request_data = json.loads(data)
-            request = AnalyzeRequest(**request_data)
+            try:
+                request_data = json.loads(data)
+                request = AnalyzeRequest(**request_data)
+            except (json.JSONDecodeError, ValueError) as exc:
+                await websocket.send_json({"status": "error", "message": str(exc)})
+                continue
 
             ws_uuid = _parse_uuid(request.user_id)
             profile = await _load_or_create_profile(db, ws_uuid, request.tenant_id)
@@ -156,22 +168,19 @@ async def analyze_websocket(websocket: WebSocket, db: AsyncSession = Depends(get
             await websocket.send_json({"status": "processing", "step": "analyzer"})
 
             graph = get_graph()
+            final_state: dict = {}
 
-            async for event in graph.astream({
-                "request": request.model_dump(),
-                "user_profile": profile_dict,
-                "page_analysis": None,
-                "plan": None,
-                "simplified_text": None,
-                "transformations": None,
-                "response": None,
-                "error": None,
-                "start_time": time.time(),
-            }):
-                node_name = list(event.keys())[0]
-                await websocket.send_json({"status": "processing", "step": node_name})
+            try:
+                async for event in graph.astream(_build_initial_state(request, profile_dict)):
+                    node_name = next(iter(event))  # safer than list(event.keys())[0]
+                    final_state = event[node_name]
+                    await websocket.send_json({"status": "processing", "step": node_name})
+            except Exception as exc:
+                logger.error(f"WebSocket graph error: {exc}")
+                await websocket.send_json({"status": "error", "message": "Analysis failed"})
+                continue
 
-            result = event[node_name].get("response")
+            result = final_state.get("response")
             if result:
                 _set_cached(key, result)
 

@@ -70,7 +70,7 @@ taking a test. Keep it simple and encouraging. Return as JSON array of strings."
                     "options": {"temperature": 0.4, "num_predict": 256}
                 }
             )
-            content = response.json()["message"]["content"]
+            content = response.json().get("message", {}).get("content", "")
             try:
                 steps = json.loads(content.strip())
                 transformations.append(DOMTransformation(
