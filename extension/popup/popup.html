@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { width: 320px; font-family: Arial, sans-serif; padding: 16px; margin: 0; }
+    h2 { color: #1E3A5F; margin: 0 0 16px; font-size: 18px; }
+    .logo { color: #2E86C1; font-weight: bold; }
+    label { display: block; margin-bottom: 4px; font-size: 13px; color: #444; }
+    select, input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;
+                    margin-bottom: 12px; font-size: 14px; box-sizing: border-box; }
+    button { width: 100%; padding: 10px; background: #2E86C1; color: white;
+             border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+    button:hover { background: #1E3A5F; }
+    .status { margin-top: 10px; font-size: 12px; color: #666; text-align: center; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px;
+             background: #D5F5E3; color: #1E8449; font-size: 11px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h2><span class="logo">ClearPath</span> 🧠</h2>
+  <p style="font-size:12px;color:#666;margin-bottom:16px;">Cognitive Accessibility Agent <span class="badge">Gemma 4</span></p>
+
+  <label>Cognitive Profile</label>
+  <select id="profileType">
+    <option value="adhd">ADHD — Focus & Step Mode</option>
+    <option value="dyslexia">Dyslexia — Easy Reading Mode</option>
+    <option value="low_literacy">Low Literacy / Language Learner</option>
+  </select>
+
+  <label>Reading Level</label>
+  <select id="readingLevel">
+    <option value="A1">A1 — Beginner</option>
+    <option value="A2" selected>A2 — Elementary</option>
+    <option value="B1">B1 — Intermediate</option>
+    <option value="B2">B2 — Upper Intermediate</option>
+  </select>
+
+  <button id="saveBtn">Activate ClearPath</button>
+  <div class="status" id="status"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
