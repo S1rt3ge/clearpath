@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     google_ai_studio_api_key: Optional[str] = None
     gemma_local_model: str = "gemma4:e2b-it-q4_K_M"
     gemma_cloud_model: str = "gemma-4-26b"
+    cache_ttl_minutes: int = 5
     app_env: str = "development"
     log_level: str = "INFO"
 

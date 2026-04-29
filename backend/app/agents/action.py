@@ -67,17 +67,36 @@ taking a test. Keep it simple and encouraging. Return as JSON array of strings."
                     "messages": [{"role": "user", "content": steps_prompt}],
                     "stream": False,
                     "think": False,
-                    "options": {"temperature": 0.4, "num_predict": 256}
+                    "options": {"temperature": 0.4, "num_predict": 200}
                 }
             )
             content = response.json().get("message", {}).get("content", "")
+            if "<channel|>" in content:
+                content = content.split("<channel|>", 1)[1]
+            content = content.strip()
+            if content.startswith("```"):
+                content = "\n".join(
+                    line for line in content.splitlines() if not line.startswith("```")
+                ).strip()
             try:
-                steps = json.loads(content.strip())
+                steps = json.loads(content)
                 transformations.append(DOMTransformation(
                     action="add_step_guide",
-                    content=json.dumps(steps)
+                    content=json.dumps(steps, ensure_ascii=False)
                 ))
             except Exception:
                 pass
+
+    # Wizard form for low-literacy users on form pages.
+    if (
+        page_analysis.get("content_type") == "form"
+        and (profile_type == "low_literacy" or "wizard_form" in actions)
+    ):
+        form_fields = page_analysis.get("form_fields", [])
+        if form_fields:
+            transformations.append(DOMTransformation(
+                action="wizard_form",
+                content=json.dumps(form_fields, ensure_ascii=False),
+            ))
 
     return transformations

@@ -6,7 +6,52 @@ async function loadProfile() {
   if (data.readingLevel) document.getElementById('readingLevel').value = data.readingLevel;
   if (data.userId) {
     document.getElementById('status').textContent = `✓ Active — ID: ${data.userId.substring(0, 8)}...`;
+    loadHistory(data.userId);
   }
+}
+
+async function loadHistory(userId) {
+  try {
+    const response = await fetch(`${BACKEND_URL}/api/v1/profiles/${userId}/history`);
+    if (!response.ok) return;
+
+    const data = await response.json();
+    if (!data.recent?.length) return;
+
+    const list = document.getElementById('cp-history-list');
+    const section = document.getElementById('cp-history');
+    if (!list || !section) return;
+
+    list.innerHTML = data.recent
+      .slice(-3)
+      .reverse()
+      .map((entry) => {
+        const timestamp = entry.timestamp || entry.ts || Date.now() / 1000;
+        const daysAgo = Math.max(0, Math.floor((Date.now() / 1000 - timestamp) / 86400));
+        const when = daysAgo === 0 ? 'сегодня' : daysAgo === 1 ? 'вчера' : `${daysAgo}д назад`;
+        let host = entry.url;
+        try {
+          host = new URL(entry.url).hostname.replace('www.', '');
+        } catch {
+          // Keep the original URL-ish value.
+        }
+        return `<div>• <span style="color:#1E3A5F;font-weight:600">${escapeHTML(host)}</span> <span style="color:#aaa">(${when})</span></div>`;
+      })
+      .join('');
+
+    section.style.display = '';
+  } catch {
+    // The popup remains usable when the backend is not running.
+  }
+}
+
+function escapeHTML(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 document.getElementById('saveBtn').addEventListener('click', async () => {

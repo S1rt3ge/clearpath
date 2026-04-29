@@ -43,6 +43,8 @@ _ANALYZER_FALLBACK = {
     "main_text_blocks": [],
     "distracting_elements": [],
     "action_required": "read",
+    "form_fields": [],
+    "url": "",
 }
 
 _PLANNER_FALLBACK = {
@@ -70,6 +72,7 @@ async def analyzer_node(state: GraphState) -> GraphState:
         fallback = {
             **_ANALYZER_FALLBACK,
             "main_text_blocks": [dom_text[:2000]] if dom_text else [],
+            "url": state["request"].get("url", ""),
         }
         return {**state, "page_analysis": fallback}
 

@@ -81,3 +81,85 @@ async def update_profile(profile_id: str, data: ProfileUpdate, db: AsyncSession 
     await db.commit()
     await db.refresh(profile)
     return profile.to_dict()
+
+
+def _count_domains(history: list) -> list:
+    """Count recent visits by domain for the popup history view."""
+    from collections import Counter
+    from urllib.parse import urlparse
+
+    domains = []
+    for entry in history:
+        try:
+            domain = urlparse(entry.get("url", "")).netloc.replace("www.", "")
+        except Exception:
+            domain = ""
+        if domain:
+            domains.append(domain)
+
+    return [
+        {"domain": domain, "visits": visits}
+        for domain, visits in Counter(domains).most_common(5)
+    ]
+
+
+@router.get("/{profile_id}/history")
+async def get_profile_history(profile_id: str, db: AsyncSession = Depends(get_db)):
+    parsed = _parse_uuid(profile_id)
+    if not parsed:
+        raise HTTPException(status_code=422, detail="Invalid profile ID format")
+
+    result = await db.execute(select(UserProfile).where(UserProfile.id == parsed))
+    profile = result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    history = profile.interaction_history or []
+    return {
+        "profile_id": profile_id,
+        "recent": history[-20:],
+        "total_visits": len(history),
+        "hard_terms": (profile.unknown_terms or [])[:20],
+        "top_domains": _count_domains(history),
+        "error_patterns": profile.error_patterns or {},
+    }
+
+
+class ErrorReport(BaseModel):
+    topic: str
+    url: str
+
+
+@router.post("/{profile_id}/error")
+async def report_error(
+    profile_id: str,
+    data: ErrorReport,
+    db: AsyncSession = Depends(get_db),
+):
+    parsed = _parse_uuid(profile_id)
+    if not parsed:
+        raise HTTPException(status_code=422, detail="Invalid profile ID format")
+
+    result = await db.execute(select(UserProfile).where(UserProfile.id == parsed))
+    profile = result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    patterns = dict(profile.error_patterns or {})
+    patterns[data.topic] = patterns.get(data.topic, 0) + 1
+
+    if len(patterns) > 50:
+        min_topic = min(patterns, key=patterns.get)
+        del patterns[min_topic]
+
+    profile.error_patterns = patterns
+    await db.commit()
+
+    return {
+        "ok": True,
+        "topic": data.topic,
+        "count": patterns[data.topic],
+        "all_patterns": dict(
+            sorted(patterns.items(), key=lambda item: item[1], reverse=True)
+        ),
+    }

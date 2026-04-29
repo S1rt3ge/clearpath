@@ -13,12 +13,13 @@ from app.schemas.analyze import AnalyzeRequest, AnalyzeResponse
 from app.agents.graph import get_graph
 from app.models.user_profile import UserProfile
 from app.models.analysis_cache import AnalysisCache
+from app.config import settings
 
 logger = logging.getLogger("clearpath")
 
 router = APIRouter(prefix="/api/v1", tags=["analyze"])
 
-_CACHE_TTL_MINUTES = 5
+_CACHE_TTL_MINUTES = settings.cache_ttl_minutes
 
 
 # ---------------------------------------------------------------------------

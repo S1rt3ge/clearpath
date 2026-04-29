@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict
 from enum import Enum
 
 
@@ -27,7 +27,9 @@ class AnalyzeRequest(BaseModel):
 
 
 class DOMTransformation(BaseModel):
-    action: str          # simplify_text | hide_element | add_guide | apply_font | add_step
+    # Supported actions:
+    # simplify_text | hide_element | apply_font | add_step_guide | wizard_form
+    action: str
     selector: Optional[str] = None
     content: Optional[str] = None
     style: Optional[Dict[str, str]] = None
@@ -40,3 +42,6 @@ class AnalyzeResponse(BaseModel):
     preparation_steps: Optional[List[str]] = None  # For tests
     summary: Optional[str] = None         # For articles
     processing_time_ms: Optional[int] = None
+    hard_terms: Optional[List[str]] = None
+    last_visit_info: Optional[dict] = None
+    from_cache: Optional[bool] = None
