@@ -61,7 +61,61 @@ function captureDOM() {
   ['script', 'style', 'nav', 'header', 'footer', 'aside'].forEach((tag) => {
     body.querySelectorAll(tag).forEach((el) => el.remove());
   });
-  return body.innerText.replace(/\s+/g, ' ').trim().substring(0, 5000);
+  const pageText = body.innerText.replace(/\s+/g, ' ').trim();
+  const formMetadata = extractFormMetadata();
+  const metadataText = formMetadata.length
+    ? `\n\nClearPath form metadata:\n${formMetadata.join('\n')}`
+    : '';
+  return `${pageText.substring(0, 4200)}${metadataText}`.trim().substring(0, 5000);
+}
+
+function extractFormMetadata() {
+  return Array.from(document.querySelectorAll('input, select, textarea'))
+    .filter((field) => {
+      const type = (field.getAttribute('type') || '').toLowerCase();
+      return !['hidden', 'submit', 'button', 'reset', 'image'].includes(type);
+    })
+    .slice(0, 20)
+    .map((field) => {
+      const label = getFieldLabel(field);
+      const selector = buildFieldSelector(field);
+      const required = field.required || field.getAttribute('aria-required') === 'true';
+      const type = field.tagName.toLowerCase() === 'input'
+        ? (field.getAttribute('type') || 'text')
+        : field.tagName.toLowerCase();
+      return `FORM_FIELD selector="${escapeAttribute(selector)}" label="${escapeAttribute(label)}" type="${escapeAttribute(type)}" required="${required}"`;
+    });
+}
+
+function getFieldLabel(field) {
+  if (field.id) {
+    const label = document.querySelector(`label[for="${cssEscape(field.id)}"]`);
+    if (label?.innerText?.trim()) return label.innerText.trim();
+  }
+
+  const wrappingLabel = field.closest('label');
+  if (wrappingLabel?.innerText?.trim()) {
+    return wrappingLabel.innerText.replace(field.value || '', '').trim();
+  }
+
+  return (
+    field.getAttribute('aria-label')
+    || field.getAttribute('placeholder')
+    || field.getAttribute('name')
+    || field.id
+    || 'Form field'
+  );
+}
+
+function buildFieldSelector(field) {
+  const tag = field.tagName.toLowerCase();
+  if (field.id) return `#${cssEscape(field.id)}`;
+  if (field.getAttribute('name')) {
+    return `${tag}[name='${cssEscape(field.getAttribute('name'))}']`;
+  }
+  const fields = Array.from(document.querySelectorAll(tag));
+  const index = fields.indexOf(field) + 1;
+  return `${tag}:nth-of-type(${Math.max(index, 1)})`;
 }
 
 async function captureScreenshot() {
@@ -791,6 +845,15 @@ function escapeHTML(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+function escapeAttribute(value) {
+  return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function cssEscape(value) {
+  if (window.CSS?.escape) return window.CSS.escape(value);
+  return String(value).replace(/[^a-zA-Z0-9_-]/g, '\\$&');
 }
 
 init();

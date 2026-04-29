@@ -167,7 +167,11 @@ async def analyze_page(request: AnalyzeRequest, db: AsyncSession = Depends(get_d
     cached = await _db_get_cache(db, cache_key)
     if cached:
         logger.info(f"Cache HIT: {request.url[:60]}")
+        cached = dict(cached)
         cached["from_cache"] = True
+        cached["last_visit_info"] = _build_last_visit_info(profile, request.url)
+        _update_profile_after_analysis(profile, request.url, cached)
+        await db.commit()
         return cached
 
     # --- Build initial state with last_visit_info ---
@@ -224,7 +228,11 @@ async def analyze_websocket(websocket: WebSocket, db: AsyncSession = Depends(get
             cached = await _db_get_cache(db, cache_key)
             if cached:
                 await websocket.send_json({"status": "processing", "step": "cache"})
+                cached = dict(cached)
                 cached["from_cache"] = True
+                cached["last_visit_info"] = _build_last_visit_info(profile, request.url)
+                _update_profile_after_analysis(profile, request.url, cached)
+                await db.commit()
                 await websocket.send_json({"status": "done", "result": cached})
                 continue
 

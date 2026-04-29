@@ -11,7 +11,7 @@ import logging
 
 logger = logging.getLogger("clearpath")
 
-from app.agents.analyzer import analyze_page
+from app.agents.analyzer import analyze_page, _fallback_analysis
 from app.agents.planner import plan_transformations
 from app.agents.writer import simplify_text
 from app.agents.action import generate_transformations
@@ -69,11 +69,7 @@ async def analyzer_node(state: GraphState) -> GraphState:
     except Exception as e:
         logger.error(f"Analyzer FAILED: {e}")
         dom_text = state["request"].get("dom_text", "")
-        fallback = {
-            **_ANALYZER_FALLBACK,
-            "main_text_blocks": [dom_text[:2000]] if dom_text else [],
-            "url": state["request"].get("url", ""),
-        }
+        fallback = _fallback_analysis(state["request"].get("url", ""), dom_text)
         return {**state, "page_analysis": fallback}
 
 
